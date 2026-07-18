@@ -70,7 +70,7 @@ operations and the tiering.
 
 ## Minimum Supported Rust Version (MSRV)
 
-Rust **1.81**. MSRV bumps are treated as minor version changes.
+Rust **1.94.1**. MSRV bumps are treated as minor version changes.
 
 ## License
 

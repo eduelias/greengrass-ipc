@@ -4,7 +4,7 @@ Thanks for your interest! This is an unofficial, community project. Contribution
 
 ## Development
 
-- Rust stable (MSRV 1.81). Install via [rustup](https://rustup.rs/).
+- Rust stable (MSRV 1.94.1). Install via [rustup](https://rustup.rs/).
 - Run all checks locally before opening a PR:
 
   ```bash

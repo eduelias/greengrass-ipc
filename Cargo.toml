@@ -2,7 +2,7 @@
 name = "greengrass-ipc"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.81"
+rust-version = "1.94.1"
 description = "Pure-Rust async client for the AWS IoT Greengrass v2 component IPC service (unofficial)."
 documentation = "https://docs.rs/greengrass-ipc"
 repository = "https://github.com/eduelias/greengrass-ipc"
