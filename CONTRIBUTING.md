@@ -19,7 +19,7 @@ Thanks for your interest! This is an unofficial, community project. Contribution
 - **Keep it pure Rust.** No C, no `bindgen`, no linking the AWS C SDK.
 - **Do not guess wire constants.** The EventStream RPC framing (message types, flags, headers, the
   Connect handshake) is captured, with sources, in
-  `.opencode/skills/greengrass-ipc-dev/reference/WIRE_PROTOCOL.md`. Implement against it.
+  [`docs/WIRE_PROTOCOL.md`](docs/WIRE_PROTOCOL.md). Implement against it.
 - **Match JSON field names exactly** to the AWS model (`greengrasscoreipc/model.py` / the Java
   generated shapes). A wrong key silently fails at runtime.
 - Add tests for new operations (shape round-trip + mock-nucleus integration where feasible).
@@ -27,9 +27,11 @@ Thanks for your interest! This is an unofficial, community project. Contribution
 
 ## Adding an IPC operation
 
-See the `greengrass-ipc-dev` skill (`.opencode/skills/greengrass-ipc-dev/SKILL.md`) for the
-step-by-step. In short: define the shapes in `src/model/`, register the operation name + model type,
-add a typed `Client` method, and test it.
+The pattern is: define the request/response shapes in `src/model/` (JSON field names must match the
+AWS model exactly — see the Python SDK `greengrasscoreipc/model.py`), then add a typed method on
+`Client` that calls `request(...)` (unary) or `subscribe(...)` (streaming) with the operation name and
+model type (e.g. `aws.greengrass#PublishToIoTCore`). Add a shape round-trip unit test and, where
+feasible, a mock-nucleus integration test. See existing operations in `src/client.rs` for reference.
 
 ## Licensing
 

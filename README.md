@@ -23,9 +23,8 @@ on-device Unix-domain-socket API that Greengrass components use to talk to the n
 
 ## Status
 
-Early development. The API surface is being built in tiers (see
-[`.opencode/PLAN.md`](.opencode/PLAN.md)). Tier 1 (component lifecycle + update management, local
-pub/sub, configuration) is the first milestone.
+Early development. The API surface is being built in tiers. Tier 1 (component lifecycle + update
+management, local pub/sub, configuration) and Tier 2 (AWS IoT Core MQTT pub/sub) are implemented.
 
 ## Example
 
@@ -65,8 +64,14 @@ from-scratch pure-Rust alternative.
 
 ## Supported operations
 
-Being implemented in tiers. See [`.opencode/PLAN.md`](.opencode/PLAN.md) for the full list of 34
-operations and the tiering.
+Being implemented in tiers (of the ~34 Greengrass IPC operations). Currently: component lifecycle &
+update management (`UpdateState`, `SubscribeToComponentUpdates`, `DeferComponentUpdate`,
+`Pause`/`Resume`/`RestartComponent`), configuration (`Get`/`UpdateConfiguration`,
+`SubscribeToConfigurationUpdate`), local pub/sub (`Publish`/`SubscribeToTopic`), and AWS IoT Core
+MQTT pub/sub (`Publish`/`SubscribeToIoTCore`).
+
+The EventStream RPC wire protocol (framing, the Connect handshake, headers) is documented in
+[`docs/WIRE_PROTOCOL.md`](docs/WIRE_PROTOCOL.md).
 
 ## Minimum Supported Rust Version (MSRV)
 

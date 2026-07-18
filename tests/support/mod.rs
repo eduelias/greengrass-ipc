@@ -3,7 +3,7 @@
 //! It speaks just enough of the EventStream RPC protocol to exercise the client: accepts a Connect
 //! (validating the auth token), replies ConnectAck, and lets the test script per-operation
 //! responses and streamed events. The wire constants mirror
-//! `.opencode/skills/greengrass-ipc-dev/reference/WIRE_PROTOCOL.md`.
+//! `docs/WIRE_PROTOCOL.md`.
 
 use aws_smithy_eventstream::frame::{write_message_to, DecodedFrame, MessageFrameDecoder};
 use aws_smithy_types::event_stream::{Header, HeaderValue, Message};

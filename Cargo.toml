@@ -10,7 +10,7 @@ license = "Apache-2.0 OR MIT"
 keywords = ["greengrass", "iot", "ipc", "aws", "eventstream"]
 categories = ["api-bindings", "asynchronous"]
 readme = "README.md"
-exclude = [".github/", "scripts/", ".opencode/"]
+exclude = [".github/", "scripts/"]
 
 [features]
 default = []
