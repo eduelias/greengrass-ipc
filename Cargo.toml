@@ -1,0 +1,40 @@
+[package]
+name = "greengrass-ipc"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.81"
+description = "Pure-Rust async client for the AWS IoT Greengrass v2 component IPC service (unofficial)."
+documentation = "https://docs.rs/greengrass-ipc"
+repository = "https://github.com/eduelias/greengrass-ipc"
+license = "Apache-2.0 OR MIT"
+keywords = ["greengrass", "iot", "ipc", "aws", "eventstream"]
+categories = ["api-bindings", "asynchronous"]
+readme = "README.md"
+exclude = [".github/", "scripts/", ".opencode/"]
+
+[features]
+default = []
+
+[dependencies]
+tokio = { version = "1", features = ["net", "rt", "sync", "io-util", "time", "macros"] }
+aws-smithy-eventstream = "=0.61.1"
+aws-smithy-types = "1"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+futures-core = "0.3"
+futures-util = "0.3"
+thiserror = "2"
+tracing = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tokio-test = "0.4"
+tempfile = "3"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+aws-smithy-eventstream = "=0.61.1"
+aws-smithy-types = "1"
+bytes = "1"
+futures-util = "0.3"
+serde_json = "1"
