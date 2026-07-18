@@ -18,6 +18,10 @@ on-device Unix-domain-socket API that Greengrass components use to talk to the G
 > ⚠️ **Unofficial.** Not affiliated with, endorsed by, or sponsored by Amazon. "AWS", "AWS IoT", and
 > "Greengrass" are used descriptively to say what this interoperates with.
 
+> 🔗 **Built with this:** [`nucleus-job-plugin`](https://github.com/eduelias/nucleus-job-plugin) — an
+> AWS IoT Jobs runner that reaches IoT Core through the nucleus via this crate's `SubscribeToIoTCore`
+> / `PublishToIoTCore`.
+
 - **Pure Rust.** No C, no FFI, no `bindgen`, no linking the AWS C SDK. Just `tokio` +
   [`aws-smithy-eventstream`](https://crates.io/crates/aws-smithy-eventstream) for the frame codec.
 - **Async-first**, ergonomic, typed operations.
