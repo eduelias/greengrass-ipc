@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-18
+
+### Changed
+- Documentation and metadata only (no API changes): the crate description now leads with
+  "AWS IoT Greengrass v2 ... nucleus IPC", and the README makes the (unofficial) AWS IoT Greengrass
+  association explicit.
+
+### Added
+- Release automation: a GitHub Actions workflow that publishes to crates.io via Trusted Publishing
+  (OIDC, no stored token) on `v*` tags, plus `RELEASING.md`.
+
+## [0.1.0] - 2026-07-18
+
 ### Added
 - Pure-Rust, async EventStream RPC transport for Greengrass IPC: Unix-socket connect, the
   `Connect`/`ConnectAck` handshake (with the `SVCUID` auth token), and a background read loop that
