@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     `pause_component`, `resume_component`, `restart_component`.
   - Configuration: `get_configuration`, `update_configuration`, `subscribe_to_configuration_update`.
   - Local pub/sub: `publish_to_topic`, `subscribe_to_topic`.
+  - AWS IoT Core MQTT pub/sub (Tier 2): `publish_to_iot_core`, `subscribe_to_iot_core` (with the
+    `QoS` enum, base64 `Blob` payloads, and `IoTCoreMessage`/`MqttMessage` events) — reuse the
+    nucleus's MQTT connection, no device certificate needed.
 - Subscriptions are exposed as an `EventStream` (`futures::Stream`); IPC calls are safe to make from
   inside a subscription loop.
 - Typed error surface, including modeled service errors.

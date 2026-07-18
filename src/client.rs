@@ -260,6 +260,51 @@ impl Client {
         )
         .await
     }
+
+    /// Publishes an MQTT message to AWS IoT Core (`PublishToIoTCore`).
+    ///
+    /// Reuses the nucleus's MQTT connection; the component must be authorized for
+    /// the topic via an `aws.greengrass.ipc.mqttproxy` policy.
+    pub async fn publish_to_iot_core(
+        &self,
+        topic_name: impl Into<String>,
+        qos: QoS,
+        payload: impl Into<Vec<u8>>,
+    ) -> Result<()> {
+        let _: PublishToIoTCoreResponse = self
+            .request(
+                "aws.greengrass#PublishToIoTCore",
+                "aws.greengrass#PublishToIoTCoreRequest",
+                &PublishToIoTCoreRequest {
+                    topic_name: topic_name.into(),
+                    qos,
+                    payload: Some(Blob(payload.into())),
+                },
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Subscribes to AWS IoT Core MQTT messages on a topic or filter
+    /// (`SubscribeToIoTCore`). Yields [`IoTCoreMessage`] events.
+    ///
+    /// Reuses the nucleus's MQTT connection; the component must be authorized for
+    /// the topic via an `aws.greengrass.ipc.mqttproxy` policy.
+    pub async fn subscribe_to_iot_core(
+        &self,
+        topic_name: impl Into<String>,
+        qos: QoS,
+    ) -> Result<EventStream<IoTCoreMessage>> {
+        self.subscribe(
+            "aws.greengrass#SubscribeToIoTCore",
+            "aws.greengrass#SubscribeToIoTCoreRequest",
+            &SubscribeToIoTCoreRequest {
+                topic_name: topic_name.into(),
+                qos,
+            },
+        )
+        .await
+    }
 }
 
 /// A stream of typed events from a subscription operation.

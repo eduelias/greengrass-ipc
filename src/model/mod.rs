@@ -4,9 +4,11 @@
 //! `greengrasscoreipc/model.py`). Renames use camelCase; blobs are base64-encoded strings.
 
 mod config;
+mod iotcore;
 mod lifecycle;
 mod pubsub;
 
 pub use config::*;
+pub use iotcore::*;
 pub use lifecycle::*;
 pub use pubsub::*;
