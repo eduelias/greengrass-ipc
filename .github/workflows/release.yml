@@ -1,0 +1,53 @@
+name: Release
+
+# Publishes greengrass-ipc to crates.io when a `v*` tag is pushed, using crates.io
+# Trusted Publishing (OIDC) — no CARGO_REGISTRY_TOKEN secret is stored.
+#
+# One-time setup (after the first manual `cargo publish`): on crates.io, open the
+# crate's Settings → Trusted Publishing and add this repository + the `release`
+# environment + this workflow file (release.yml). See RELEASING.md.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # create the GitHub release
+  id-token: write   # OIDC token for crates.io Trusted Publishing
+
+jobs:
+  publish:
+    name: Publish to crates.io
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify tag matches Cargo.toml version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          CRATE_VERSION="$(cargo metadata --format-version 1 --no-deps \
+            | python3 -c 'import sys,json;print(json.load(sys.stdin)["packages"][0]["version"])')"
+          if [ "$TAG" != "$CRATE_VERSION" ]; then
+            echo "Tag v$TAG does not match Cargo.toml version $CRATE_VERSION" >&2
+            exit 1
+          fi
+          echo "Publishing version $CRATE_VERSION"
+
+      - name: Authenticate to crates.io (Trusted Publishing)
+        uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+
+      - name: cargo publish
+        run: cargo publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
