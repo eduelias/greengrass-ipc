@@ -1,0 +1,61 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b1220"/>
+      <stop offset="0.55" stop-color="#0e1a2b"/>
+      <stop offset="1" stop-color="#0a1a14"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3fb950"/>
+      <stop offset="1" stop-color="#2ea043"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.2" r="0.5">
+      <stop offset="0" stop-color="#3fb950" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#3fb950" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- subtle socket/graph motif, top-right -->
+  <g stroke="#3fb950" stroke-opacity="0.16" stroke-width="2" fill="none">
+    <circle cx="1010" cy="150" r="6" fill="#3fb950" fill-opacity="0.5" stroke="none"/>
+    <circle cx="1120" cy="90"  r="5" fill="#3fb950" fill-opacity="0.35" stroke="none"/>
+    <circle cx="1120" cy="220" r="5" fill="#3fb950" fill-opacity="0.35" stroke="none"/>
+    <circle cx="930"  cy="90"  r="4" fill="#3fb950" fill-opacity="0.3" stroke="none"/>
+    <line x1="1010" y1="150" x2="1120" y2="90"/>
+    <line x1="1010" y1="150" x2="1120" y2="220"/>
+    <line x1="1010" y1="150" x2="930"  y2="90"/>
+  </g>
+
+  <!-- left accent bar -->
+  <rect x="0" y="0" width="10" height="630" fill="url(#accent)"/>
+
+  <!-- top labels -->
+  <text x="80" y="120" fill="#3fb950" font-size="26" font-weight="700" letter-spacing="3">RUST · CRATE</text>
+  <text x="80" y="120" fill="#8b98a5" font-size="26" font-weight="600" letter-spacing="1" text-anchor="end" transform="translate(1120,0)">crates.io</text>
+
+  <!-- title -->
+  <text x="78" y="240" fill="#ffffff" font-size="96" font-weight="800" letter-spacing="-1">greengrass-ipc</text>
+
+  <!-- tagline -->
+  <text x="80" y="300" fill="#c9d1d9" font-size="34" font-weight="500">Pure-Rust, async client for AWS IoT Greengrass v2</text>
+  <text x="80" y="344" fill="#c9d1d9" font-size="34" font-weight="500">on-device component IPC.</text>
+
+  <!-- feature bullets -->
+  <g fill="#e6edf3" font-size="27">
+    <circle cx="92" cy="418" r="6" fill="#3fb950"/>
+    <text x="116" y="426">No C, no FFI, no bindgen — just tokio + aws-smithy-eventstream</text>
+    <circle cx="92" cy="464" r="6" fill="#3fb950"/>
+    <text x="116" y="472">Async subscriptions; IPC calls safe from inside callbacks</text>
+    <circle cx="92" cy="510" r="6" fill="#3fb950"/>
+    <text x="116" y="518">Lifecycle · configuration · local &amp; IoT Core MQTT pub/sub</text>
+  </g>
+
+  <!-- footer -->
+  <line x1="80" y1="560" x2="1120" y2="560" stroke="#233" stroke-width="1.5"/>
+  <text x="80" y="600" fill="#8b98a5" font-size="24" font-weight="600">cargo add greengrass-ipc</text>
+  <text x="1120" y="600" fill="#8b98a5" font-size="22" text-anchor="end">Apache-2.0 / MIT · unofficial, not affiliated with Amazon</text>
+</svg>

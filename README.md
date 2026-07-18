@@ -1,5 +1,9 @@
 # greengrass-ipc
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/eduelias/greengrass-ipc/main/docs/social-card.png" alt="greengrass-ipc — pure-Rust, async client for AWS IoT Greengrass v2 on-device component IPC" width="100%">
+</p>
+
 **An unofficial, pure-Rust async client for [AWS IoT Greengrass](https://aws.amazon.com/greengrass/) v2
 on-device component IPC.**
 
