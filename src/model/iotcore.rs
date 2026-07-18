@@ -7,15 +7,37 @@
 
 use serde::{Deserialize, Serialize};
 
-/// MQTT quality of service (`aws.greengrass#QOS`), serialized as its string name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// MQTT quality of service (`aws.greengrass#QOS`).
+///
+/// On the wire the Greengrass IPC service encodes QoS as the **string form of the
+/// integer** (`"0"` / `"1"`), matching the AWS SDKs — not the symbolic name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QoS {
     /// QoS 0 — delivered at most once.
-    #[serde(rename = "AT_MOST_ONCE")]
     AtMostOnce,
     /// QoS 1 — delivered at least once.
-    #[serde(rename = "AT_LEAST_ONCE")]
     AtLeastOnce,
+}
+
+impl Serialize for QoS {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let s = match self {
+            QoS::AtMostOnce => "0",
+            QoS::AtLeastOnce => "1",
+        };
+        serializer.serialize_str(s)
+    }
+}
+
+impl<'de> Deserialize<'de> for QoS {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "0" => Ok(QoS::AtMostOnce),
+            "1" => Ok(QoS::AtLeastOnce),
+            other => Err(serde::de::Error::custom(format!("invalid QoS: {other}"))),
+        }
+    }
 }
 
 /// Request for `PublishToIoTCore`.
@@ -107,7 +129,7 @@ mod tests {
         };
         let v: serde_json::Value = serde_json::to_value(&req).unwrap();
         assert_eq!(v["topicName"], "test/topic");
-        assert_eq!(v["qos"], "AT_LEAST_ONCE");
+        assert_eq!(v["qos"], "1");
         assert_eq!(v["payload"], "aGk="); // base64("hi")
     }
 
@@ -128,6 +150,6 @@ mod tests {
             payload: None,
         };
         let s = serde_json::to_string(&req).unwrap();
-        assert_eq!(s, r#"{"topicName":"t","qos":"AT_MOST_ONCE"}"#);
+        assert_eq!(s, r#"{"topicName":"t","qos":"0"}"#);
     }
 }
