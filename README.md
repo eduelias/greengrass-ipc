@@ -1,12 +1,18 @@
 # greengrass-ipc
 
+**An unofficial, pure-Rust async client for [AWS IoT Greengrass](https://aws.amazon.com/greengrass/) v2
+on-device component IPC.**
+
 [![CI](https://github.com/eduelias/greengrass-ipc/actions/workflows/ci.yml/badge.svg)](https://github.com/eduelias/greengrass-ipc/actions/workflows/ci.yml)
 [![Crates.io](https://img.shields.io/crates/v/greengrass-ipc.svg)](https://crates.io/crates/greengrass-ipc)
 [![Docs.rs](https://docs.rs/greengrass-ipc/badge.svg)](https://docs.rs/greengrass-ipc)
 [![License](https://img.shields.io/crates/l/greengrass-ipc.svg)](#license)
 
 A **pure-Rust, async** client for the **AWS IoT Greengrass v2 component IPC** service — the
-on-device Unix-domain-socket API that Greengrass components use to talk to the nucleus.
+on-device Unix-domain-socket API that Greengrass components use to talk to the Greengrass nucleus.
+
+> ⚠️ **Unofficial.** Not affiliated with, endorsed by, or sponsored by Amazon. "AWS", "AWS IoT", and
+> "Greengrass" are used descriptively to say what this interoperates with.
 
 - **Pure Rust.** No C, no FFI, no `bindgen`, no linking the AWS C SDK. Just `tokio` +
   [`aws-smithy-eventstream`](https://crates.io/crates/aws-smithy-eventstream) for the frame codec.
