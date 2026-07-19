@@ -1,0 +1,30 @@
+{
+  "RecipeFormatVersion": "2020-01-25",
+  "ComponentName": "io.github.eduelias.greengrass-ipc-demo",
+  "ComponentVersion": "0.1.0",
+  "ComponentType": "aws.greengrass.generic",
+  "ComponentDescription": "Demo component that uses the greengrass-ipc crate to report RUNNING to the nucleus.",
+  "ComponentPublisher": "eduelias",
+  "ComponentDependencies": {
+    "aws.greengrass.Nucleus": {
+      "VersionRequirement": ">=2.0.0 <3.0.0",
+      "DependencyType": "SOFT"
+    }
+  },
+  "Manifests": [
+    {
+      "Platform": {
+        "os": "linux"
+      },
+      "Lifecycle": {
+        "Run": "{artifacts:path}/greengrass-ipc-demo"
+      },
+      "Artifacts": [
+        {
+          "Uri": "s3://BUCKET_NAME/io.github.eduelias.greengrass-ipc-demo/0.1.0/greengrass-ipc-demo",
+          "Permission": { "Read": "ALL", "Execute": "ALL" }
+        }
+      ]
+    }
+  ]
+}

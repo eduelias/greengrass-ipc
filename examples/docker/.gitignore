@@ -1,0 +1,7 @@
+# Never commit real credentials, resolved env, run state, or build output.
+.env
+.demo-state
+greengrass-v2-credentials/credentials
+component/target/
+component/.cargo-container/
+component/Cargo.lock

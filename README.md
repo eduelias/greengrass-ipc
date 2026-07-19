@@ -68,6 +68,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Try it against a real Greengrass nucleus (Docker, bring only AWS creds)
+
+```bash
+cd examples/docker
+cp .env.example .env                                   # set AWS_REGION
+cp greengrass-v2-credentials/credentials.example \
+   greengrass-v2-credentials/credentials               # add your AWS keys
+./run-demo.sh                                          # provisions + deploys a demo component
+./teardown.sh                                          # cleans up
+```
+
+Spins up the official Greengrass nucleus in Docker (auto-provisioned), builds a tiny component that
+uses this crate **from crates.io**, deploys it locally, and shows it reach `RUNNING`. See
+[`examples/docker/`](examples/docker/) — note it **creates billable AWS resources**; always run the
+teardown. (No AWS account? The [`examples/`](examples/) run offline with `cargo run --example …`.)
+
 ## Why this exists
 
 The only pre-existing Rust option is AWS's official `aws-greengrass-component-sdk` (crate `gg_sdk`),

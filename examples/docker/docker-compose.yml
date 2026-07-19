@@ -1,0 +1,22 @@
+# docker-compose for the greengrass-ipc component demo.
+#
+# Runs the official AWS IoT Greengrass nucleus with automatic provisioning; you
+# provide only AWS credentials. run-demo.sh builds a tiny component that uses the
+# greengrass-ipc crate (from crates.io) and deploys it locally via the in-container
+# Greengrass CLI, then shows it reach RUNNING.
+#
+# The image `greengrass-nucleus:demo` is built locally by ./run-demo.sh from the
+# official AWS Greengrass Dockerfile (AWS does not publish a public image).
+#
+# ⚠️  Creates billable AWS resources — run ./teardown.sh after. See README.md.
+
+services:
+  greengrass:
+    image: greengrass-nucleus:demo
+    init: true
+    container_name: ggipc-greengrass-demo
+    volumes:
+      - ./greengrass-v2-credentials:/root/.aws/:ro
+    env_file: .env
+    ports:
+      - "8883:8883"
