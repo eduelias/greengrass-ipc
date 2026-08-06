@@ -16,8 +16,12 @@ use tokio::sync::mpsc;
 
 pub const MT_APPLICATION_MESSAGE: i32 = 0;
 pub const MT_APPLICATION_ERROR: i32 = 1;
+pub const MT_PING: i32 = 2;
+pub const MT_PING_RESPONSE: i32 = 3;
 pub const MT_CONNECT: i32 = 4;
 pub const MT_CONNECT_ACK: i32 = 5;
+pub const MT_PROTOCOL_ERROR: i32 = 6;
+pub const MT_INTERNAL_ERROR: i32 = 7;
 
 pub const FLAG_CONNECTION_ACCEPTED: i32 = 0x1;
 pub const FLAG_TERMINATE_STREAM: i32 = 0x2;
@@ -34,6 +38,28 @@ pub enum Behavior {
         ack: serde_json::Value,
         events: Vec<(String, serde_json::Value)>,
     },
+    /// Accept the request and never answer it. Used to exercise the request timeout.
+    Silent,
+}
+
+/// Something the test wants the mock to do, out of band from the operation loop.
+#[derive(Debug, Clone)]
+pub enum Control {
+    /// Send a `Ping` on stream-0 with the given payload.
+    SendPing(Vec<u8>),
+    /// Send a connection-level error (`ProtocolError` or `InternalError`) on stream-0.
+    SendProtocolError { message_type: i32, body: String },
+    /// Drop the connection without any close frame, as if the nucleus died.
+    Close,
+}
+
+/// A frame the mock received from the client, reduced to its protocol-level fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObservedFrame {
+    pub message_type: i32,
+    pub stream_id: i32,
+    pub flags: i32,
+    pub payload: Vec<u8>,
 }
 
 pub struct MockNucleus {
@@ -41,8 +67,34 @@ pub struct MockNucleus {
     pub auth_token: String,
     /// Receives the operation name + payload of every request the mock handled.
     pub seen: mpsc::UnboundedReceiver<(String, serde_json::Value)>,
+    /// Receives *every* frame the client sent, including protocol-level ones the operation loop
+    /// ignores (PingResponse, stream terminations).
+    pub frames: mpsc::UnboundedReceiver<ObservedFrame>,
+    /// Drives out-of-band server behaviour: pings, protocol errors, abrupt close.
+    pub control: mpsc::UnboundedSender<Control>,
     _tempdir: tempfile::TempDir,
     _task: tokio::task::JoinHandle<()>,
+}
+
+impl MockNucleus {
+    /// Waits for the next frame from the client matching `predicate`, or returns `None` on timeout.
+    pub async fn next_frame_matching(
+        &mut self,
+        timeout: std::time::Duration,
+        predicate: impl Fn(&ObservedFrame) -> bool,
+    ) -> Option<ObservedFrame> {
+        tokio::time::timeout(timeout, async {
+            while let Some(frame) = self.frames.recv().await {
+                if predicate(&frame) {
+                    return Some(frame);
+                }
+            }
+            None
+        })
+        .await
+        .ok()
+        .flatten()
+    }
 }
 
 impl MockNucleus {
@@ -55,11 +107,21 @@ impl MockNucleus {
         let auth_token = "test-svcuid".to_string();
         let listener = UnixListener::bind(&socket_path)?;
         let (seen_tx, seen_rx) = mpsc::unbounded_channel();
+        let (frames_tx, frames_rx) = mpsc::unbounded_channel();
+        let (control_tx, control_rx) = mpsc::unbounded_channel();
 
         let expected_token = auth_token.clone();
         let task = tokio::spawn(async move {
             if let Ok((stream, _)) = listener.accept().await {
-                let _ = handle_conn(stream, expected_token, behavior, seen_tx).await;
+                let _ = handle_conn(
+                    stream,
+                    expected_token,
+                    behavior,
+                    seen_tx,
+                    frames_tx,
+                    control_rx,
+                )
+                .await;
             }
         });
 
@@ -67,17 +129,22 @@ impl MockNucleus {
             socket_path,
             auth_token,
             seen: seen_rx,
+            frames: frames_rx,
+            control: control_tx,
             _tempdir: tempdir,
             _task: task,
         })
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_conn(
     stream: UnixStream,
     expected_token: String,
     behavior: std::collections::HashMap<String, Behavior>,
     seen_tx: mpsc::UnboundedSender<(String, serde_json::Value)>,
+    frames_tx: mpsc::UnboundedSender<ObservedFrame>,
+    mut control_rx: mpsc::UnboundedReceiver<Control>,
 ) -> std::io::Result<()> {
     let (mut read_half, mut write_half) = stream.into_split();
     let mut decoder = MessageFrameDecoder::new();
@@ -115,11 +182,48 @@ async fn handle_conn(
 
     // --- Operation loop ---
     loop {
-        let frame = match read_frame(&mut read_half, &mut decoder, &mut buf).await? {
-            Some(f) => f,
-            None => return Ok(()),
+        let frame = tokio::select! {
+            // Out-of-band server behaviour requested by the test.
+            Some(command) = control_rx.recv() => {
+                match command {
+                    Control::SendPing(payload) => {
+                        let ping = Message::new(bytes::Bytes::from(payload))
+                            .add_header(int32(":message-type", MT_PING))
+                            .add_header(int32(":message-flags", 0))
+                            .add_header(int32(":stream-id", 0));
+                        write_frame(&mut write_half, &ping).await?;
+                    }
+                    Control::SendProtocolError { message_type, body } => {
+                        let err = Message::new(bytes::Bytes::from(body.into_bytes()))
+                            .add_header(int32(":message-type", message_type))
+                            .add_header(int32(":message-flags", 0))
+                            .add_header(int32(":stream-id", 0))
+                            .add_header(string(":content-type", "application/json"));
+                        write_frame(&mut write_half, &err).await?;
+                    }
+                    Control::Close => return Ok(()),
+                }
+                continue;
+            }
+            frame = read_frame(&mut read_half, &mut decoder, &mut buf) => {
+                match frame? {
+                    Some(f) => f,
+                    None => return Ok(()),
+                }
+            }
         };
+
         let (mt, flags, stream_id, _smt, payload) = parse(&frame);
+
+        // Record every frame, including protocol-level ones, so tests can assert on
+        // PingResponse and stream termination.
+        let _ = frames_tx.send(ObservedFrame {
+            message_type: mt,
+            stream_id,
+            flags,
+            payload: payload.to_vec(),
+        });
+
         if mt != MT_APPLICATION_MESSAGE {
             continue;
         }
@@ -156,6 +260,8 @@ async fn handle_conn(
                     write_frame(&mut write_half, &ev_msg).await?;
                 }
             }
+            // Deliberately no reply: the client should hit its request timeout.
+            Behavior::Silent => {}
         }
     }
 }

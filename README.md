@@ -68,6 +68,39 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+## Connection lifecycle: exit, don't reconnect
+
+The nucleus issues every component a fresh `SVCUID` **each time it starts that component**. A
+running process only ever sees the token it was `exec`'d with, and the environment of a live
+process never changes — so once the connection drops, that process can no longer authenticate.
+
+`Client::connect_from_env()` re-reads the environment, which makes a reconnect loop *look*
+reasonable. It isn't: after a nucleus restart it retries with a token the nucleus no longer
+honours, and fails forever.
+
+**The correct response to a lost connection is to exit.** The nucleus restarts its components on
+the way back up, and the replacement gets a valid token.
+
+```rust,ignore
+tokio::select! {
+    _ = client.closed() => {
+        eprintln!("nucleus IPC lost; exiting so the nucleus can restart us with a fresh token");
+        std::process::exit(1);
+    }
+    result = your_work(&client) => result?,
+}
+```
+
+[`Client::closed()`](https://docs.rs/greengrass-ipc/latest/greengrass_ipc/struct.Client.html#method.closed)
+resolves when the connection is lost, so you notice even with no operation in flight — a component
+that only publishes occasionally would otherwise not find out until its next call.
+
+Lingering is not merely useless, it can be actively harmful: a process holding an exclusive
+resource — a serial port opened with `TIOCEXCL`, a lock file, a listening socket — will block its
+own replacement from starting. We hit exactly that in practice: an orphaned component kept a USB
+scanner open, and the nucleus's replacement went `BROKEN` with `EBUSY` until the orphan was killed
+by hand.
+
 ### Try it against a real Greengrass nucleus (Docker, bring only AWS creds)
 
 ```bash

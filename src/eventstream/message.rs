@@ -69,6 +69,20 @@ impl RpcMessage {
             .add_header(int32(headers::STREAM_ID, stream_id))
     }
 
+    /// Builds a `PingResponse` for a received `Ping`, echoing its payload.
+    ///
+    /// The EventStream RPC spec pairs every `Ping` with a `PingResponse` carrying the same
+    /// payload, so a server using pings for liveness sees us as alive.
+    pub(crate) fn ping_response(payload: Bytes) -> Message {
+        Message::new(payload)
+            .add_header(int32(
+                headers::MESSAGE_TYPE,
+                MessageType::PingResponse as i32,
+            ))
+            .add_header(int32(headers::MESSAGE_FLAGS, flags::NONE))
+            .add_header(int32(headers::STREAM_ID, 0))
+    }
+
     /// Parses an [`RpcMessage`] out of a decoded [`Message`].
     pub(crate) fn parse(message: &Message) -> Result<Self> {
         let mut message_type = None;
@@ -170,6 +184,16 @@ mod tests {
             parsed.service_model_type.as_deref(),
             Some("aws.greengrass#UpdateStateRequest")
         );
+    }
+
+    #[test]
+    fn ping_response_echoes_payload_on_stream_zero() {
+        let message = RpcMessage::ping_response(Bytes::from_static(b"beat"));
+        let parsed = RpcMessage::parse(&message).unwrap();
+
+        assert_eq!(parsed.message_type, MessageType::PingResponse);
+        assert_eq!(parsed.stream_id, 0);
+        assert_eq!(&parsed.payload[..], b"beat");
     }
 
     #[test]

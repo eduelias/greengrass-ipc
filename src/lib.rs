@@ -34,7 +34,7 @@ mod error;
 mod eventstream;
 mod model;
 
-pub use client::{Client, EventStream};
+pub use client::{Client, ClientConfig, EventStream, DEFAULT_REQUEST_TIMEOUT};
 pub use env::{IpcEnv, AUTH_TOKEN_ENV, SOCKET_PATH_ENV};
 pub use error::{Error, Result};
 pub use model::*;

@@ -1,6 +1,6 @@
 [package]
 name = "greengrass-ipc"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.94.1"
 description = "Unofficial pure-Rust async client for AWS IoT Greengrass v2 on-device component IPC (nucleus IPC over the Unix domain socket)."
@@ -17,14 +17,19 @@ default = []
 
 [dependencies]
 tokio = { version = "1", features = ["net", "rt", "sync", "io-util", "time", "macros"] }
-aws-smithy-eventstream = "=0.61.1"
+# Only the 0.61 line is exercised; the surface used here (MessageFrameDecoder,
+# write_message_to, Message, Header) is stable across its patch releases. Kept as a
+# caret range rather than an exact pin so a consumer that also depends on an AWS SDK
+# crate can unify on a compatible version.
+aws-smithy-eventstream = "0.61"
 aws-smithy-types = "1"
 bytes = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+# Only `futures_core::Stream`, which `EventStream` implements. Callers that want the
+# `StreamExt` combinators (`.next()`) depend on `futures-util` themselves.
 futures-core = "0.3"
-futures-util = "0.3"
 thiserror = "2"
 tracing = "0.1"
 
@@ -33,7 +38,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-test = "0.4"
 tempfile = "3"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-aws-smithy-eventstream = "=0.61.1"
+aws-smithy-eventstream = "0.61"
 aws-smithy-types = "1"
 bytes = "1"
 futures-util = "0.3"

@@ -12,12 +12,56 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 use tokio::sync::mpsc;
+
+/// The default time a request waits for its response before failing with [`Error::Timeout`].
+pub const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Tuning knobs for a [`Client`].
+///
+/// ```
+/// use greengrass_ipc::ClientConfig;
+/// use std::time::Duration;
+///
+/// let config = ClientConfig::default().with_request_timeout(Duration::from_secs(5));
+/// ```
+#[derive(Debug, Clone)]
+pub struct ClientConfig {
+    /// How long a request/response operation waits before failing with [`Error::Timeout`].
+    ///
+    /// Subscriptions are unaffected: only the initial subscribe handshake is bounded by this, and
+    /// events afterwards arrive whenever the nucleus sends them.
+    pub request_timeout: Duration,
+}
+
+impl Default for ClientConfig {
+    fn default() -> Self {
+        Self {
+            request_timeout: DEFAULT_REQUEST_TIMEOUT,
+        }
+    }
+}
+
+impl ClientConfig {
+    /// Sets the request timeout.
+    #[must_use]
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = timeout;
+        self
+    }
+}
 
 /// An async client for the Greengrass v2 component IPC service.
 ///
 /// Create one with [`Client::connect_from_env`]. Cloning is cheap (the underlying connection is
 /// shared); all clones share the single socket and read loop.
+///
+/// # Connection lifetime
+///
+/// A `Client` maps to exactly one socket and one set of credentials, and it does not reconnect.
+/// See [`Client::closed`] and [`Error::ConnectionClosed`] for why, and for the pattern to use
+/// instead.
 #[derive(Clone)]
 pub struct Client {
     conn: Arc<Connection>,
@@ -35,17 +79,58 @@ impl Client {
     ///
     /// Returns [`Error::NotUnderGreengrass`] if those variables are absent, so a caller that may run
     /// outside Greengrass can fall back gracefully.
+    ///
+    /// # Call this once per process
+    ///
+    /// The nucleus issues a fresh `SVCUID` every time it starts a component, and a running process
+    /// only ever sees the token it was `exec`'d with -- the environment of a live process does not
+    /// change. Calling this again after the connection dropped will re-read the *same*, now-stale
+    /// token and fail authentication.
+    ///
+    /// If the connection is lost, **exit the process**; the nucleus restarts the component with a
+    /// valid token. See [`Error::ConnectionClosed`] and [`Client::closed`].
     pub async fn connect_from_env() -> Result<Self> {
         let env = IpcEnv::from_env()?;
         Self::connect(&env).await
     }
 
-    /// Connects using explicit [`IpcEnv`] parameters (useful for tests).
+    /// Connects using explicit [`IpcEnv`] parameters (useful for tests), with default settings.
     pub async fn connect(env: &IpcEnv) -> Result<Self> {
-        let conn = Connection::connect(env).await?;
+        Self::connect_with_config(env, ClientConfig::default()).await
+    }
+
+    /// Connects using explicit [`IpcEnv`] parameters and a custom [`ClientConfig`].
+    pub async fn connect_with_config(env: &IpcEnv, config: ClientConfig) -> Result<Self> {
+        let conn = Connection::connect(env, config.request_timeout).await?;
         Ok(Self {
             conn: Arc::new(conn),
         })
+    }
+
+    /// Resolves when the IPC connection is lost -- EOF, a socket error, or a connection-level
+    /// error reported by the nucleus.
+    ///
+    /// This is the only way to notice the nucleus going away while you have no operation in
+    /// flight. A component that only publishes occasionally would otherwise not find out until its
+    /// next call, which could be hours later.
+    ///
+    /// Resolves immediately if the connection is already closed.
+    ///
+    /// The correct response is to exit -- see [`Error::ConnectionClosed`]:
+    ///
+    /// ```no_run
+    /// # async fn example(client: greengrass_ipc::Client) {
+    /// tokio::select! {
+    ///     _ = client.closed() => {
+    ///         eprintln!("nucleus IPC lost; exiting so the nucleus can restart us");
+    ///         std::process::exit(1);
+    ///     }
+    ///     _ = std::future::pending::<()>() => {} // your work here
+    /// }
+    /// # }
+    /// ```
+    pub async fn closed(&self) {
+        self.conn.closed().await;
     }
 
     /// Sends a request/response operation and decodes the typed response.
