@@ -394,6 +394,9 @@ fn fail_all(registry: &Registry, err: Error) {
 /// Hands out the next stream-id. Ids are positive and never reused (the server tracks them
 /// monotonically, and 0 is the connection-level stream), so after `i32::MAX - 1` operations the
 /// connection is spent and reports [`Error::ConnectionClosed`]: exit and let the nucleus restart us.
+// shortcut: newer Rust renames `fetch_update` to `try_update`, which MSRV 1.94 lacks; switch when
+// the MSRV reaches it.
+#[allow(deprecated)]
 fn alloc_stream_id(next: &AtomicI32) -> Result<i32> {
     next.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
         .map_err(|_| Error::ConnectionClosed)
