@@ -92,6 +92,26 @@ async fn service_error_is_surfaced() {
 }
 
 #[tokio::test]
+async fn rejected_subscribe_is_a_service_error() {
+    let mut behavior = HashMap::new();
+    behavior.insert(
+        "aws.greengrass#SubscribeToComponentUpdates".to_string(),
+        Behavior::Error {
+            model: "aws.greengrass#UnauthorizedError".to_string(),
+            message: "not authorized".to_string(),
+        },
+    );
+    let mock = MockNucleus::start(behavior).await.unwrap();
+    let client = Client::connect(&env_for(&mock)).await.unwrap();
+
+    match client.subscribe_to_component_updates().await {
+        Err(Error::Service { model, .. }) => assert_eq!(model, "aws.greengrass#UnauthorizedError"),
+        Err(other) => panic!("expected service error, got {other:?}"),
+        Ok(_) => panic!("a rejected subscribe must not yield a stream"),
+    }
+}
+
+#[tokio::test]
 async fn subscribe_to_component_updates_streams_events() {
     let mut behavior = HashMap::new();
     behavior.insert(
@@ -304,6 +324,33 @@ async fn a_timed_out_request_does_not_resolve_a_later_caller() {
         client.update_state(LifecycleState::Running).await,
         Err(Error::Timeout { .. })
     ));
+}
+
+#[tokio::test]
+async fn subscribe_times_out_when_the_nucleus_never_acks() {
+    // `ClientConfig::request_timeout` documents that it bounds the subscribe handshake too.
+    let mut behavior = HashMap::new();
+    behavior.insert(
+        "aws.greengrass#SubscribeToComponentUpdates".to_string(),
+        Behavior::Silent,
+    );
+    let mut mock = MockNucleus::start(behavior).await.unwrap();
+    let client = Client::connect_with_config(
+        &env_for(&mock),
+        ClientConfig::default().with_request_timeout(std::time::Duration::from_millis(100)),
+    )
+    .await
+    .unwrap();
+
+    let result = tokio::time::timeout(TIMEOUT, client.subscribe_to_component_updates())
+        .await
+        .expect("subscribe hung past the request timeout");
+    assert!(matches!(result, Err(Error::Timeout { .. })));
+
+    // A slow nucleus may still open the subscription; it must be told we gave up.
+    mock.next_frame_matching(TIMEOUT, |f| f.flags & support::FLAG_TERMINATE_STREAM != 0)
+        .await
+        .expect("a timed-out subscribe must be terminated on the nucleus");
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -13,6 +13,9 @@ Thanks for your interest! This is an unofficial, community project. Contribution
 
   This runs `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, and `cargo doc` — the same
   gates as CI.
+- If you touch stream-id allocation or `src/eventstream/`, also run the
+  [Kani](https://model-checking.github.io/kani/) proofs (`#[cfg(kani)]` modules): `cargo kani`.
+  CI runs them too; the full run takes about a minute.
 
 ## Guidelines
 

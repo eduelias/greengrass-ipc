@@ -5,7 +5,7 @@
 //! message flags, the well-known headers, and the `Connect`/`ConnectAck` handshake.
 //!
 //! All wire constants here are transcribed from AWS's own implementations; see
-//! `.opencode/skills/greengrass-ipc-dev/reference/WIRE_PROTOCOL.md`.
+//! `docs/WIRE_PROTOCOL.md`.
 
 pub(crate) mod headers;
 pub(crate) mod message;
@@ -42,6 +42,16 @@ impl MessageType {
             7 => Self::InternalError,
             _ => return None,
         })
+    }
+}
+
+#[cfg(kani)]
+#[kani::proof]
+fn message_type_from_i32_is_exactly_the_wire_table() {
+    let v: i32 = kani::any();
+    match MessageType::from_i32(v) {
+        Some(t) => assert!(t as i32 == v),
+        None => assert!(!(0..=7).contains(&v)),
     }
 }
 
