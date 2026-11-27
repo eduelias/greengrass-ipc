@@ -149,8 +149,14 @@ impl Connection {
         let _ = rx.wait_for(|closed| *closed).await;
     }
 
-    fn alloc_stream_id(&self) -> i32 {
-        self.next_stream_id.fetch_add(1, Ordering::Relaxed)
+    /// Allocates a stream-id. When they run out, shuts the socket down so the read loop ends and
+    /// [`Connection::closed`] fires, as for any other dead connection.
+    async fn next_stream_id(&self) -> Result<i32> {
+        let id = alloc_stream_id(&self.next_stream_id);
+        if id.is_err() {
+            let _ = self.write_half.lock().await.shutdown().await;
+        }
+        id
     }
 
     /// Sends a request and awaits the single response on a fresh stream.
@@ -160,14 +166,15 @@ impl Connection {
         request_model: &str,
         request: &Req,
     ) -> Result<RpcMessage> {
-        let stream_id = self.alloc_stream_id();
+        // Serialize before registering, so a serialize error cannot leak a registry entry.
+        let payload = serde_json::to_vec(request)?;
+        let stream_id = self.next_stream_id().await?;
         let (tx, rx) = oneshot::channel();
         self.registry
             .lock()
             .unwrap()
             .insert(stream_id, StreamSink::Request(tx));
 
-        let payload = serde_json::to_vec(request)?;
         let msg = RpcMessage::activate(stream_id, operation, request_model, Bytes::from(payload));
         if let Err(e) = self.write_message(&msg).await {
             self.registry.lock().unwrap().remove(&stream_id);
@@ -198,7 +205,8 @@ impl Connection {
         request_model: &str,
         request: &Req,
     ) -> Result<(i32, mpsc::UnboundedReceiver<Result<RpcMessage>>)> {
-        let stream_id = self.alloc_stream_id();
+        let payload = serde_json::to_vec(request)?;
+        let stream_id = self.next_stream_id().await?;
 
         // Install the subscription sink up front so no early event is dropped between the ack and
         // the sink swap. Both the ack and the events arrive on this channel.
@@ -208,31 +216,29 @@ impl Connection {
             .unwrap()
             .insert(stream_id, StreamSink::Subscription(event_tx));
 
-        let payload = serde_json::to_vec(request)?;
         let msg = RpcMessage::activate(stream_id, operation, request_model, Bytes::from(payload));
         if let Err(e) = self.write_message(&msg).await {
             self.registry.lock().unwrap().remove(&stream_id);
             return Err(e);
         }
 
-        // The first message on the stream is the subscription ack. Consume and validate it.
-        match event_rx.recv().await {
-            Some(Ok(ack)) if ack.message_type == MessageType::ApplicationError => {
-                self.registry.lock().unwrap().remove(&stream_id);
-                return Err(service_error_from(&ack));
+        // The first message on the stream is the subscription ack. `dispatch` has already turned an
+        // ApplicationError ack into `Err(Error::Service)`.
+        let failure = match tokio::time::timeout(self.request_timeout, event_rx.recv()).await {
+            Ok(Some(Ok(_ack))) => return Ok((stream_id, event_rx)),
+            Ok(Some(Err(e))) => e,
+            Ok(None) => Error::ConnectionClosed,
+            Err(_elapsed) => {
+                // A slow nucleus may still open the subscription; tell it we gave up.
+                self.close_stream(stream_id).await;
+                return Err(Error::Timeout {
+                    operation: operation.to_owned(),
+                    timeout: self.request_timeout,
+                });
             }
-            Some(Ok(_ack)) => {} // accepted
-            Some(Err(e)) => {
-                self.registry.lock().unwrap().remove(&stream_id);
-                return Err(e);
-            }
-            None => {
-                self.registry.lock().unwrap().remove(&stream_id);
-                return Err(Error::ConnectionClosed);
-            }
-        }
-
-        Ok((stream_id, event_rx))
+        };
+        self.registry.lock().unwrap().remove(&stream_id);
+        Err(failure)
     }
 
     /// Sends a terminate-stream message to close a subscription and removes its sink.
@@ -243,28 +249,17 @@ impl Connection {
     }
 
     async fn write_message(&self, message: &Message) -> Result<()> {
-        let mut buf = BytesMut::new();
-        write_message_to(message, &mut buf).map_err(|e| Error::frame(e.to_string()))?;
-
         let mut guard = self.write_half.lock().await;
-        let result = async {
-            guard.write_all(&buf).await?;
-            guard.flush().await?;
-            Ok::<(), std::io::Error>(())
-        }
-        .await;
-
-        if let Err(error) = result {
+        let result = write_frame(&mut guard, message).await;
+        if let Err(Error::Io(error)) = &result {
             // A write failure (EPIPE and friends) means the socket is gone. Shut the write half
             // down so the nucleus sees EOF and drops its end; our read loop then observes EOF and
             // fails everything still in flight. Without this, other pending operations would sit
             // waiting for a read-side EOF that may take a while to arrive.
             tracing::warn!(%error, "IPC write failed; shutting the connection down");
             let _ = guard.shutdown().await;
-            return Err(Error::from(error));
         }
-
-        Ok(())
+        result
     }
 }
 
@@ -358,22 +353,18 @@ fn dispatch(registry: &Registry, rpc: RpcMessage) {
     let terminates = rpc.terminates_stream();
     let is_error = rpc.message_type == MessageType::ApplicationError;
 
+    let result = if is_error {
+        Err(service_error_from(&rpc))
+    } else {
+        Ok(rpc)
+    };
+
     let mut guard = registry.lock().unwrap();
     match guard.remove(&stream_id) {
         Some(StreamSink::Request(tx)) => {
-            let result = if is_error {
-                Err(service_error_from(&rpc))
-            } else {
-                Ok(rpc)
-            };
             let _ = tx.send(result);
         }
         Some(StreamSink::Subscription(tx)) => {
-            let result = if is_error {
-                Err(service_error_from(&rpc))
-            } else {
-                Ok(rpc)
-            };
             let _ = tx.send(result);
             // Keep the subscription open unless this message closes the stream.
             if !terminates && !is_error {
@@ -398,6 +389,14 @@ fn fail_all(registry: &Registry, err: Error) {
             }
         }
     }
+}
+
+/// Hands out the next stream-id. Ids are positive and never reused (the server tracks them
+/// monotonically, and 0 is the connection-level stream), so after `i32::MAX - 1` operations the
+/// connection is spent and reports [`Error::ConnectionClosed`]: exit and let the nucleus restart us.
+fn alloc_stream_id(next: &AtomicI32) -> Result<i32> {
+    next.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+        .map_err(|_| Error::ConnectionClosed)
 }
 
 /// Builds an [`Error::Service`] from an application-error frame.
@@ -431,4 +430,40 @@ struct ConnectPayload<'a> {
 struct ServiceErrorPayload {
     #[serde(rename = "message")]
     message: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stream_ids_stop_at_i32_max_instead_of_wrapping() {
+        let next = AtomicI32::new(i32::MAX - 1);
+        assert_eq!(alloc_stream_id(&next).unwrap(), i32::MAX - 1);
+        assert!(alloc_stream_id(&next).is_err());
+        assert!(alloc_stream_id(&next).is_err());
+    }
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// From any reachable allocator state, every id handed out is positive (never the stream-0
+    /// connection channel), strictly increasing, and exhaustion is permanent rather than a wrap.
+    #[kani::proof]
+    #[kani::unwind(3)]
+    fn stream_ids_are_positive_increasing_and_never_wrap() {
+        let start: i32 = kani::any();
+        kani::assume(start >= 1); // `Connection::connect` starts at 1 and only `alloc` moves it
+        let next = AtomicI32::new(start);
+
+        let a = alloc_stream_id(&next);
+        let b = alloc_stream_id(&next);
+        match (a, b) {
+            (Ok(a), Ok(b)) => assert!(0 < a && a < b),
+            (Ok(a), Err(_)) => assert!(a > 0),
+            (Err(_), b) => assert!(b.is_err()),
+        }
+    }
 }

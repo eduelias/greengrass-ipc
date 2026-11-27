@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Subscribing no longer waits forever when the nucleus never acknowledges the subscription. The
+  handshake is now bounded by `ClientConfig::request_timeout`, as its documentation already said,
+  and fails with `Error::Timeout`; the abandoned subscription is terminated on the nucleus.
+- A request or subscription whose payload fails to serialize no longer leaves a dead entry behind
+  in the connection's stream registry.
+- Stream-ids no longer wrap past `i32::MAX` into negative ids and then into stream 0, the
+  connection-level channel. A connection that has used them all returns `Error::ConnectionClosed`
+  and shuts down, so `Client::closed()` resolves.
+
+### Added
+
+- Kani proof harnesses (`cargo kani`) for stream-id allocation, `:message-type` decoding and
+  `RpcMessage::parse`.
+
 ## [0.2.0] - 2026-08-06
 
 ### Breaking

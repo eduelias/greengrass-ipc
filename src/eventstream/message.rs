@@ -89,17 +89,26 @@ impl RpcMessage {
         let mut msg_flags = flags::NONE;
         let mut stream_id = 0i32;
         let mut service_model_type = None;
+        let int = |header: &Header| {
+            header_i32(header.value()).ok_or_else(|| {
+                Error::frame(format!(
+                    "header {} is not a 32-bit integer: {:?}",
+                    header.name().as_str(),
+                    header.value()
+                ))
+            })
+        };
 
         for header in message.headers() {
             match header.name().as_str() {
                 headers::MESSAGE_TYPE => {
-                    message_type = Some(header_i32(header)?);
+                    message_type = Some(int(header)?);
                 }
                 headers::MESSAGE_FLAGS => {
-                    msg_flags = header_i32(header)?;
+                    msg_flags = int(header)?;
                 }
                 headers::STREAM_ID => {
-                    stream_id = header_i32(header)?;
+                    stream_id = int(header)?;
                 }
                 headers::SERVICE_MODEL_TYPE => {
                     if let HeaderValue::String(s) = header.value() {
@@ -136,22 +145,54 @@ fn string(name: &str, value: &str) -> Header {
 }
 
 /// Reads an integer header value, accepting the various signed integer header encodings the wire
-/// may use for `:message-type` / `:message-flags` / `:stream-id`.
-fn header_i32(header: &Header) -> Result<i32> {
-    match header.value() {
-        HeaderValue::Int32(v) => Ok(*v),
-        HeaderValue::Int16(v) => Ok(i32::from(*v)),
-        HeaderValue::Byte(v) => Ok(i32::from(*v)),
-        HeaderValue::Int64(v) => i32::try_from(*v).map_err(|_| {
-            Error::frame(format!(
-                "integer header {} out of range",
-                header.name().as_str()
-            ))
-        }),
-        other => Err(Error::frame(format!(
-            "expected integer header for {}, got {other:?}",
-            header.name().as_str()
-        ))),
+/// may use for `:message-type` / `:message-flags` / `:stream-id`. `None` if it is not an integer or
+/// does not fit in an `i32`.
+fn header_i32(value: &HeaderValue) -> Option<i32> {
+    match value {
+        HeaderValue::Int32(v) => Some(*v),
+        HeaderValue::Int16(v) => Some(i32::from(*v)),
+        HeaderValue::Byte(v) => Some(i32::from(*v)),
+        HeaderValue::Int64(v) => i32::try_from(*v).ok(),
+        _ => None,
+    }
+}
+
+#[cfg(kani)]
+mod proofs {
+    use super::*;
+
+    /// Error text is irrelevant to these properties, and formatting it symbolically never finishes.
+    fn no_format(_: std::fmt::Arguments<'_>) -> String {
+        String::new()
+    }
+
+    fn any_int_header_value() -> HeaderValue {
+        match kani::any::<u8>() % 5 {
+            0 => HeaderValue::Byte(kani::any()),
+            1 => HeaderValue::Int16(kani::any()),
+            2 => HeaderValue::Int32(kani::any()),
+            3 => HeaderValue::Int64(kani::any()),
+            _ => HeaderValue::Bool(kani::any()),
+        }
+    }
+
+    /// Whatever integer encodings the nucleus picks for the three RPC headers, `parse` either
+    /// rejects the message or returns exactly the values on the wire. It never panics.
+    #[kani::proof]
+    #[kani::unwind(15)] // memcmp over the longest header name compared, `:message-flags` (14 bytes)
+    #[kani::stub(std::fmt::format, no_format)]
+    fn parse_returns_wire_values_or_an_error() {
+        let message = Message::new(Bytes::new())
+            .add_header(Header::new(headers::MESSAGE_TYPE, any_int_header_value()))
+            .add_header(Header::new(headers::MESSAGE_FLAGS, any_int_header_value()))
+            .add_header(Header::new(headers::STREAM_ID, any_int_header_value()));
+
+        if let Ok(rpc) = RpcMessage::parse(&message) {
+            let h = message.headers();
+            assert!(header_i32(h[0].value()) == Some(rpc.message_type as i32));
+            assert!(header_i32(h[1].value()) == Some(rpc.flags));
+            assert!(header_i32(h[2].value()) == Some(rpc.stream_id));
+        }
     }
 }
 
@@ -194,6 +235,17 @@ mod tests {
         assert_eq!(parsed.message_type, MessageType::PingResponse);
         assert_eq!(parsed.stream_id, 0);
         assert_eq!(&parsed.payload[..], b"beat");
+    }
+
+    #[test]
+    fn header_i32_widens_signed_values_and_rejects_the_rest() {
+        assert_eq!(header_i32(&HeaderValue::Int16(-1)), Some(-1));
+        assert_eq!(header_i32(&HeaderValue::Int64(-1)), Some(-1));
+        assert_eq!(
+            header_i32(&HeaderValue::Int64(i64::from(i32::MAX) + 1)),
+            None
+        );
+        assert_eq!(header_i32(&HeaderValue::Bool(true)), None);
     }
 
     #[test]

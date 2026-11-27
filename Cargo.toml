@@ -12,6 +12,13 @@ categories = ["api-bindings", "asynchronous"]
 readme = "README.md"
 exclude = [".github/", "scripts/", "docs/social-card.png", "docs/social-card.svg", "examples/docker/"]
 
+[lints.rust]
+# `cfg(kani)` is set by `cargo kani`; see the proof harnesses under `#[cfg(kani)]`.
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[package.metadata.kani.unstable]
+stubbing = true
+
 [features]
 default = []
 

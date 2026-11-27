@@ -79,6 +79,9 @@ pub enum Error {
     /// a listening socket) will block its own replacement from starting.
     ///
     /// See [`crate::Client::closed`] for detecting this without an operation in flight.
+    ///
+    /// Also returned once a connection has used up its stream-ids (`i32::MAX - 1` operations);
+    /// the response is the same.
     #[error("greengrass ipc connection closed")]
     ConnectionClosed,
 }
