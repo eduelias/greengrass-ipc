@@ -20,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Kani proof harnesses (`cargo kani`) for stream-id allocation, `:message-type` decoding and
-  `RpcMessage::parse`.
+- Kani proof harnesses (`cargo kani`, run in CI) for stream-id allocation, `:message-type`
+  decoding and `RpcMessage::parse`.
 
 ## [0.2.0] - 2026-08-06
 

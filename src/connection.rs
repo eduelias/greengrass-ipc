@@ -10,7 +10,7 @@ use bytes::{Bytes, BytesMut};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::ops::ControlFlow;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -72,7 +72,7 @@ pub(crate) struct Connection {
     /// the nucleus reports a connection-level error.
     write_half: Arc<AsyncMutex<OwnedWriteHalf>>,
     registry: Registry,
-    next_stream_id: AtomicI32,
+    next_stream_id: AtomicI64,
     /// Flipped to `true` by the read loop just before it exits, for [`Connection::closed`].
     closed: watch::Receiver<bool>,
     /// How long to wait for a response before giving up on a request.
@@ -134,7 +134,7 @@ impl Connection {
             write_half,
             registry,
             // Stream-ids are positive; the CRT increments from 1.
-            next_stream_id: AtomicI32::new(1),
+            next_stream_id: AtomicI64::new(1),
             closed: closed_rx,
             request_timeout,
             read_task,
@@ -392,14 +392,12 @@ fn fail_all(registry: &Registry, err: Error) {
 }
 
 /// Hands out the next stream-id. Ids are positive and never reused (the server tracks them
-/// monotonically, and 0 is the connection-level stream), so after `i32::MAX - 1` operations the
+/// monotonically, and 0 is the connection-level stream), so after `i32::MAX` operations the
 /// connection is spent and reports [`Error::ConnectionClosed`]: exit and let the nucleus restart us.
-// shortcut: newer Rust renames `fetch_update` to `try_update`, which MSRV 1.94 lacks; switch when
-// the MSRV reaches it.
-#[allow(deprecated)]
-fn alloc_stream_id(next: &AtomicI32) -> Result<i32> {
-    next.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-        .map_err(|_| Error::ConnectionClosed)
+///
+/// The counter is an `i64`, which cannot wrap in practice, so once past `i32::MAX` it stays past.
+fn alloc_stream_id(next: &AtomicI64) -> Result<i32> {
+    i32::try_from(next.fetch_add(1, Ordering::Relaxed)).map_err(|_| Error::ConnectionClosed)
 }
 
 /// Builds an [`Error::Service`] from an application-error frame.
@@ -441,8 +439,8 @@ mod tests {
 
     #[test]
     fn stream_ids_stop_at_i32_max_instead_of_wrapping() {
-        let next = AtomicI32::new(i32::MAX - 1);
-        assert_eq!(alloc_stream_id(&next).unwrap(), i32::MAX - 1);
+        let next = AtomicI64::new(i64::from(i32::MAX));
+        assert_eq!(alloc_stream_id(&next).unwrap(), i32::MAX);
         assert!(alloc_stream_id(&next).is_err());
         assert!(alloc_stream_id(&next).is_err());
     }
@@ -455,11 +453,11 @@ mod proofs {
     /// From any reachable allocator state, every id handed out is positive (never the stream-0
     /// connection channel), strictly increasing, and exhaustion is permanent rather than a wrap.
     #[kani::proof]
-    #[kani::unwind(3)]
     fn stream_ids_are_positive_increasing_and_never_wrap() {
-        let start: i32 = kani::any();
-        kani::assume(start >= 1); // `Connection::connect` starts at 1 and only `alloc` moves it
-        let next = AtomicI32::new(start);
+        let start: i64 = kani::any();
+        // `Connection::connect` starts at 1 and only `alloc` moves it, one step per operation.
+        kani::assume(start >= 1 && start < i64::MAX - 1);
+        let next = AtomicI64::new(start);
 
         let a = alloc_stream_id(&next);
         let b = alloc_stream_id(&next);
